@@ -63,6 +63,37 @@ func getCombinedEndpoint() string {
 	return BaseCombinedMainURL
 }
 
+// WsTradeEvent define websocket trade event
+type WsTradeEvent struct {
+	Event     string `json:"e"`
+	Time      int64  `json:"E"`
+	Symbol    string `json:"s"`
+	Price     string `json:"p"`
+	Quantity  string `json:"q"`
+	TradeID   int64  `json:"t"`
+	TradeTime int64  `json:"T"`
+	Maker     bool   `json:"m"`
+}
+
+// WsTradeHandler handle websocket that push trade information
+type WsTradeHandler func(event *WsTradeEvent)
+
+// WsTradeServe serve websocket handler with a symbol
+func WsTradeServer(symbol string, handler WsTradeHandler, errHandler ErrHandler) (doneC, stopC chan struct{}, err error) {
+	endpoint := fmt.Sprintf("%s/%s@trade", getWsEndpoint(), strings.ToLower(symbol))
+	cfg := newWsConfig(endpoint)
+	wsHandler := func(message []byte) {
+		event := new(WsTradeEvent)
+		err := json.Unmarshal(message, &event)
+		if err != nil {
+			errHandler(err)
+			return
+		}
+		handler(event)
+	}
+	return wsServe(cfg, wsHandler, errHandler)
+}
+
 // WsAggTradeEvent define websocket aggTrde event.
 type WsAggTradeEvent struct {
 	Event            string `json:"e"`
