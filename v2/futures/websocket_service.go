@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/bitly/go-simplejson"
+	"github.com/bytedance/sonic"
 	"github.com/gorilla/websocket"
 )
 
@@ -84,11 +85,45 @@ func WsTradeServer(symbol string, handler WsTradeHandler, errHandler ErrHandler)
 	cfg := newWsConfig(endpoint)
 	wsHandler := func(message []byte) {
 		event := new(WsTradeEvent)
-		err := json.Unmarshal(message, &event)
+		err := sonic.Unmarshal(message, &event)
 		if err != nil {
 			errHandler(err)
 			return
 		}
+		handler(event)
+	}
+	return wsServe(cfg, wsHandler, errHandler)
+}
+
+func WsCombinedTradeServer(symbols []string, handler WsTradeHandler, errHandler ErrHandler) (doneC, stopC chan struct{}, err error) {
+	endpoint := getCombinedEndpoint()
+	for _, s := range symbols {
+		endpoint += fmt.Sprintf("%s@trade", strings.ToLower(s)) + "/"
+	}
+	endpoint = endpoint[:len(endpoint)-1]
+	cfg := newWsConfig(endpoint)
+	wsHandler := func(message []byte) {
+		j, err := newJSON(message)
+		if err != nil {
+			errHandler(err)
+			return
+		}
+
+		stream := j.Get("stream").MustString()
+		data := j.Get("data").MustMap()
+
+		symbol := strings.Split(stream, "@")[0]
+
+		jsonData, _ := sonic.Marshal(data)
+
+		event := new(WsTradeEvent)
+		err = sonic.Unmarshal(jsonData, event)
+		if err != nil {
+			errHandler(err)
+			return
+		}
+		event.Symbol = strings.ToUpper(symbol)
+
 		handler(event)
 	}
 	return wsServe(cfg, wsHandler, errHandler)
